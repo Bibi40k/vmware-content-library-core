@@ -10,9 +10,6 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -20,12 +17,6 @@ jobs:
           go-version-file: go.mod
       - run: go test -coverprofile=coverage.out ./...
       - run: go vet ./...
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.out
-          use_oidc: true
-          fail_ci_if_error: false
 
   lint:
     runs-on: ubuntu-latest
@@ -49,3 +40,37 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: govulncheck
         run: govulncheck ./...
+
+  coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Generate coverage badge JSON
+        run: |
+          mkdir -p tmp docs/coverage
+          go test -coverprofile=tmp/coverage.out ./...
+          total=$(go tool cover -func=tmp/coverage.out | tail -1 | awk '{print $3}')
+          pct=${total%%%}
+          color=red
+          awk "BEGIN {exit !($pct >= 80)}" && color=green
+          awk "BEGIN {exit !($pct >= 60 && $pct < 80)}" && color=yellow
+          cat > docs/coverage/coverage.json <<EOF
+          {"schemaVersion":1,"label":"coverage","message":"${total}","color":"${color}"}
+          EOF
+      - name: Commit coverage badge JSON
+        run: |
+          if git diff --quiet -- docs/coverage/coverage.json; then
+            echo "No coverage change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/coverage/coverage.json
+          git commit -m "chore: update coverage badge"
+          git push
