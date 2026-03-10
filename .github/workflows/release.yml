@@ -16,5 +16,6 @@ jobs:
     uses: infrakit-io/repo-standards-kit/.github/workflows/go-release.yml@v1
     permissions:
       contents: write
+      actions: read
     with:
       version: ${{ inputs.version || '' }}
